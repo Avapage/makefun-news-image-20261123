@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""news-image-20261123 entry: write the day's front page to the output.
+"""Copy the finished front page into the output directory.
 
-The repository holds the finished front-page image in entry.png (drawn
-by build_image.py from cross-checked reporting of Monday 23 November
-2026). This program copies it, byte for byte, to entry.png inside the
-output directory: MAKEFUN_OUTPUT_DIR when set (local runs), otherwise
-/output (the grader). Standard library only, no network, and the copy
-is exact, so two runs write identical bytes.
+The entry image lives in this repository as entry.png (rendered by
+build_image.py from reporting of Monday 23 November 2026). This program
+writes an exact copy to entry.png in the output directory: the
+MAKEFUN_OUTPUT_DIR environment variable when set, else /output. It uses
+only the standard library, touches no network, and copies byte for byte,
+so a second run writes the same bytes as the first. Deterministic by
+construction: the source file never changes between runs.
 """
 
 import os
 import shutil
-from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-SOURCE = HERE / "entry.png"
+SRC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "entry.png")
 
 
-def main() -> None:
-    out_dir = Path(os.environ.get("MAKEFUN_OUTPUT_DIR", "/output"))
-    out_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(SOURCE, out_dir / "entry.png")
+def run():
+    dest = os.environ.get("MAKEFUN_OUTPUT_DIR", "/output")
+    os.makedirs(dest, exist_ok=True)
+    shutil.copyfile(SRC, os.path.join(dest, "entry.png"))
 
 
 if __name__ == "__main__":
-    main()
+    run()

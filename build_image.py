@@ -31,261 +31,256 @@ the grader.
 
 import math
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
+from PIL import ImageFont
 
-S = 2  # supersample factor
-W = 1024 * S
-H = 1024 * S
+SS = 2  # draw at twice the final size, then shrink for sharp text
+W, H = 1024 * SS, 1024 * SS
 
-CREAM = (246, 239, 221)
-INK = (17, 17, 17)
-RED = (176, 32, 32)
-WHITE = (250, 248, 240)
-PALE = (255, 224, 138)
-NAVY = (18, 38, 63)
-DARKRED = (110, 26, 26)
-STEEL = (24, 68, 96)
-GREEN = (20, 80, 52)
-SLATE = (38, 54, 74)
-PLUM = (30, 20, 44)
-GOLD = (240, 178, 40)
-ORANGE = (245, 120, 30)
+PAPER = (246, 239, 221)
+INK = (17, 17, 17)  # near-black for rules and masthead
+CRIMSON = (176, 32, 32)
+SNOW = (250, 248, 240)
+SAND = (255, 224, 138)
+NAVY = (18, 38, 63)  # hero panel
+WINE = (110, 26, 26)
+TEAL = (24, 68, 96)
+FOREST = (20, 80, 52)
+SLATE = (38, 54, 74)  # defence panel
+PLUM = (30, 20, 44)  # sport panel
+GOLD = (240, 178, 40)  # warm yellow for the globe and fins
+EMBER = (245, 120, 30)
+MIST = (232, 236, 240)
+CLOUD = (238, 240, 244)
 
-FONT_DIR = "/usr/share/fonts/truetype/dejavu"
-_cache = {}
-
-
-def F(name, size):
-    key = (name, size)
-    if key not in _cache:
-        _cache[key] = ImageFont.truetype(f"{FONT_DIR}/{name}", size * S)
-    return _cache[key]
+FONTDIR = "/usr/share/fonts/truetype/dejavu"
+_fonts = {}
 
 
-def BOLD(size):
-    return F("DejaVuSans-Bold.ttf", size)
+def font(path, size):
+    key = (path, size)
+    if key not in _fonts:
+        _fonts[key] = ImageFont.truetype(f"{FONTDIR}/{path}", size * SS)
+    return _fonts[key]
 
 
-def REG(size):
-    return F("DejaVuSans.ttf", size)
+def bold(size):
+    return font("DejaVuSans-Bold.ttf", size)
 
 
-def SERIF(size):
-    return F("DejaVuSerif-Bold.ttf", size)
+def plain(size):
+    return font("DejaVuSans.ttf", size)
 
 
-img = Image.new("RGB", (W, H), CREAM)
-d = ImageDraw.Draw(img)
+def serif(size):
+    return font("DejaVuSerif-Bold.ttf", size)
 
 
-def X(v):
-    return v * S
+page = Image.new("RGB", (W, H), PAPER)
+pen = ImageDraw.Draw(page)
 
 
-def tw(text, font):
-    return d.textlength(text, font=font) / S
+def px(v):
+    return v * SS
 
 
-def fit(text, max_w, font_fn, base, minimum=10):
-    size = base
-    while size > minimum and tw(text, font_fn(size)) > max_w:
-        size -= 1
-    return font_fn(size), size
+def textwidth(s, f):
+    return pen.textlength(s, font=f) / SS
 
 
-def wrap(text, font, max_w):
-    words, lines, cur = text.split(), [], ""
-    for w_ in words:
-        trial = (cur + " " + w_).strip()
-        if tw(trial, font) <= max_w or not cur:
-            cur = trial
+def fitfont(s, maxw, fn, start, floor=10):
+    sz = start
+    while sz > floor and textwidth(s, fn(sz)) > maxw:
+        sz -= 1
+    return fn(sz), sz
+
+
+def wraptext(s, f, maxw):
+    words = s.split()
+    out, acc = [], ""
+    for w in words:
+        trial = (acc + " " + w).strip()
+        if textwidth(trial, f) <= maxw or not acc:
+            acc = trial
         else:
-            lines.append(cur)
-            cur = w_
-    if cur:
-        lines.append(cur)
-    return lines
+            out.append(acc)
+            acc = w
+    if acc:
+        out.append(acc)
+    return out
 
 
-def centered(text, cx, y, font, fill):
-    d.text((X(cx - tw(text, font) / 2), X(y)), text, font=font, fill=fill)
+def centre(s, cx, y, f, fill):
+    pen.text((px(cx - textwidth(s, f) / 2), px(y)), s, font=f, fill=fill)
 
 
-def spaced(text, cx, y, font, fill, tracking):
-    widths = [tw(c, font) for c in text]
-    total = sum(widths) + tracking * (len(text) - 1)
-    x = cx - total / 2
-    for c, w_ in zip(text, widths):
-        d.text((X(x), X(y)), c, font=font, fill=fill)
-        x += w_ + tracking
+def letterspace(s, cx, y, f, fill, gap):
+    widths = [textwidth(c, f) for c in s]
+    total = sum(widths) + gap * (len(s) - 1)
+    start = cx - total / 2
+    for c, w in zip(s, widths):
+        pen.text((px(start), px(y)), c, font=f, fill=fill)
+        start += w + gap
 
 
-def rect(x, y, w, h, fill):
-    d.rectangle([X(x), X(y), X(x + w), X(y + h)], fill=fill)
+def box(x, y, w, h, fill):
+    pen.rectangle([px(x), px(y), px(x + w), px(y + h)], fill=fill)
 
 
-def line(x1, y1, x2, y2, fill, width=2):
-    d.line([X(x1), X(y1), X(x2), X(y2)], fill=fill, width=int(width * S))
+def seg(x1, y1, x2, y2, fill, width=2):
+    pen.line([px(x1), px(y1), px(x2), px(y2)], fill=fill, width=int(width * SS))
 
 
-# ---------------------------------------------------------------- icons
-def icon_globe_crack(cx, cy, r):
-    d.ellipse([X(cx - r), X(cy - r), X(cx + r), X(cy + r)], outline=GOLD, width=5 * S)
-    for frac in (-0.55, 0.0, 0.55):
-        rw = r * (1 - frac * frac) ** 0.5
-        d.ellipse([X(cx - rw), X(cy - r), X(cx + rw), X(cy + r)], outline=GOLD, width=2 * S)
-    for frac in (-0.5, 0.0, 0.5):
-        yy = cy + frac * r
-        half = r * (1 - frac * frac) ** 0.5
-        line(cx - half, yy, cx + half, yy, GOLD, 2)
-    crack = [(cx - r * 0.25, cy - r), (cx + r * 0.05, cy - r * 0.45),
-             (cx - r * 0.18, cy - r * 0.05), (cx + r * 0.22, cy + r * 0.5),
-             (cx + r * 0.02, cy + r)]
-    for a, b in zip(crack, crack[1:]):
-        line(a[0], a[1], b[0], b[1], (10, 18, 30), 7)
+# ================================ icons ================================
+def globe(cx, cy, r):
+    pen.ellipse([px(cx - r), px(cy - r), px(cx + r), px(cy + r)], outline=GOLD, width=5 * SS)
+    for f in (-0.55, 0.0, 0.55):
+        rw = r * (1 - f * f) ** 0.5
+        pen.ellipse([px(cx - rw), px(cy - r), px(cx + rw), px(cy + r)], outline=GOLD, width=2 * SS)
+    for f in (-0.5, 0.0, 0.5):
+        yy = cy + f * r
+        half = r * (1 - f * f) ** 0.5
+        seg(cx - half, yy, cx + half, yy, GOLD, 2)
+    breaks = []
+    breaks.append((cx - 0.25 * r, cy - r))
+    breaks.append((cx + 0.05 * r, cy - 0.45 * r))
+    breaks.append((cx - 0.18 * r, cy - 0.05 * r))
+    breaks.append((cx + 0.22 * r, cy + 0.5 * r))
+    breaks.append((cx + 0.02 * r, cy + r))
+    for a, b in zip(breaks, breaks[1:]):
+        seg(a[0], a[1], b[0], b[1], (10, 18, 30), 7)
 
 
-def icon_dome(cx, cy):
-    # US Capitol-style dome + columns, in white/gold on the panel.
-    d.pieslice([X(cx - 46), X(cy - 44), X(cx + 46), X(cy + 30)], 180, 360, fill=WHITE)
-    rect(cx - 6, cy - 60, 12, 16, WHITE)
-    d.ellipse([X(cx - 8), X(cy - 68), X(cx + 8), X(cy - 52)], fill=GOLD)
-    rect(cx - 58, cy - 8, 116, 8, WHITE)
-    for i in range(5):
-        rect(cx - 52 + i * 24, cy + 2, 10, 34, WHITE)
-    rect(cx - 62, cy + 36, 124, 8, WHITE)
-    rect(cx - 58, cy - 26, 116, 4, PALE)
+def dome(cx, cy):
+    # US Capitol-style dome and columns, white and gold on the panel.
+    pen.pieslice([px(cx - 46), px(cy - 44), px(cx + 46), px(cy + 30)], 180, 360, fill=SNOW)
+    box(cx - 6, cy - 60, 12, 16, SNOW)
+    pen.ellipse([px(cx - 8), px(cy - 68), px(cx + 8), px(cy - 52)], fill=GOLD)
+    box(cx - 58, cy - 8, 116, 8, SNOW)
+    for n in range(5):
+        box(cx - 52 + n * 24, cy + 2, 10, 34, SNOW)
+    box(cx - 62, cy + 36, 124, 8, SNOW)
+    box(cx - 58, cy - 26, 116, 4, SAND)
 
 
-def icon_flame(cx, cy):
-    pts = [(cx - 34, cy + 34), (cx - 40, cy + 4), (cx - 14, cy - 14),
-           (cx - 18, cy - 34), (cx + 2, cy - 52), (cx + 10, cy - 26),
-           (cx + 34, cy - 38), (cx + 30, cy - 6), (cx + 42, cy + 12),
-           (cx + 34, cy + 34)]
-    d.polygon([(X(a), X(b)) for a, b in pts], fill=ORANGE)
-    d.polygon([(X(cx - 14), X(cy + 30)), (X(cx - 4), X(cy - 6)),
-               (X(cx + 6), X(cy + 12)), (X(cx + 16), X(cy + 30))], fill=(255, 205, 60))
+def flame(cx, cy):
+    outline = [(cx - 34, cy + 34), (cx - 40, cy + 4), (cx - 14, cy - 14),
+               (cx - 18, cy - 34), (cx + 2, cy - 52), (cx + 10, cy - 26),
+               (cx + 34, cy - 38), (cx + 30, cy - 6), (cx + 42, cy + 12),
+               (cx + 34, cy + 34)]
+    pen.polygon([(px(a), px(b)) for a, b in outline], fill=EMBER)
+    pen.polygon([(px(cx - 14), px(cy + 30)), (px(cx - 4), px(cy - 6)),
+                 (px(cx + 6), px(cy + 12)), (px(cx + 16), px(cy + 30))], fill=(255, 205, 60))
 
 
-def icon_missile(cx, cy):
-    # Diagonal missile rising, with fins and a short exhaust plume.
+def missile(cx, cy):
+    # Missile climbing diagonally, gold fins, a short exhaust plume.
     bx, by = cx - 28, cy + 22
     tx, ty = cx + 30, cy - 40
     dx, dy = tx - bx, ty - by
     ln = math.hypot(dx, dy)
     ux, uy = dx / ln, dy / ln
-    px, py = -uy, ux
+    nx, ny = -uy, ux
     w = 10
-    d.line([X(bx), X(by), X(tx), X(ty)], fill=WHITE, width=int(w * 2 * S))
-    d.polygon([(X(tx + px * w), X(ty + py * w)),
-               (X(tx + px * w * 1.9), X(ty + py * w * 1.9)),
-               (X(tx - px * w), X(ty - py * w))], fill=WHITE)
-    d.polygon([(X(bx - px * w), X(by - py * w)),
-               (X(bx - px * w - ux * 14), X(by - py * w - uy * 14)),
-               (X(bx + px * w - ux * 14), X(by + py * w - uy * 14)),
-               (X(bx + px * w), X(by + py * w))], fill=GOLD)
-    for i in range(2):
-        ex = bx - ux * (10 + i * 7)
-        ey = by - uy * (10 + i * 7)
-        r = 5 - i * 2
-        d.ellipse([X(ex - r), X(ey - r), X(ex + r), X(ey + r)], fill=ORANGE)
+    pen.line([px(bx), px(by), px(tx), px(ty)], fill=SNOW, width=int(w * 2 * SS))
+    pen.polygon([(px(tx + nx * w), px(ty + ny * w)),
+                 (px(tx + nx * w * 1.9), px(ty + ny * w * 1.9)),
+                 (px(tx - nx * w), px(ty - ny * w))], fill=SNOW)
+    pen.polygon([(px(bx - nx * w), px(by - ny * w)),
+                 (px(bx - nx * w - ux * 14), px(by - ny * w - uy * 14)),
+                 (px(bx + nx * w - ux * 14), px(by + ny * w - uy * 14)),
+                 (px(bx + nx * w), px(by + ny * w))], fill=GOLD)
+    for n in range(2):
+        ex = bx - ux * (10 + n * 7)
+        ey = by - uy * (10 + n * 7)
+        r = 5 - n * 2
+        pen.ellipse([px(ex - r), px(ey - r), px(ex + r), px(ey + r)], fill=EMBER)
 
 
-def icon_exam(cx, cy):
-    # Exam paper with pencil and a bold X mark.
-    d.rectangle([X(cx - 34), X(cy - 40), X(cx + 26), X(cy + 36)], fill=WHITE)
-    for i in range(4):
-        line(cx - 24, cy - 26 + i * 14, cx + 16, cy - 26 + i * 14, (120, 130, 145), 3)
-    line(cx - 24, cy + 16, cx - 2, cy + 16, RED, 4)
-    # pencil, diagonal at lower right, kept clear of the headline below
-    d.polygon([(X(cx + 18), X(cy + 36)), (X(cx + 42), X(cy + 6)),
-               (X(cx + 50), X(cy + 14)), (X(cx + 26), X(cy + 44))], fill=GOLD)
-    d.polygon([(X(cx + 18), X(cy + 36)), (X(cx + 26), X(cy + 44)),
-               (X(cx + 12), X(cy + 46))], fill=(60, 40, 20))
-    line(cx + 30, cy - 34, cx + 52, cy - 12, RED, 6)
-    line(cx + 52, cy - 34, cx + 30, cy - 12, RED, 6)
+def exam(cx, cy):
+    # Exam paper, pencil and a red cross.
+    pen.rectangle([px(cx - 34), px(cy - 40), px(cx + 26), px(cy + 36)], fill=SNOW)
+    for n in range(4):
+        seg(cx - 24, cy - 26 + n * 14, cx + 16, cy - 26 + n * 14, (120, 130, 145), 3)
+    seg(cx - 24, cy + 16, cx - 2, cy + 16, CRIMSON, 4)
+    # pencil at lower right, kept clear of the headline below
+    pen.polygon([(px(cx + 18), px(cy + 36)), (px(cx + 42), px(cy + 6)),
+                 (px(cx + 50), px(cy + 14)), (px(cx + 26), px(cy + 44))], fill=GOLD)
+    pen.polygon([(px(cx + 18), px(cy + 36)), (px(cx + 26), px(cy + 44)),
+                 (px(cx + 12), px(cy + 46))], fill=(60, 40, 20))
+    seg(cx + 30, cy - 34, cx + 52, cy - 12, CRIMSON, 6)
+    seg(cx + 52, cy - 34, cx + 30, cy - 12, CRIMSON, 6)
 
 
-def icon_cricket(cx, cy):
-    # Cricket bat crossed with a ball.
-    d.polygon([(X(cx - 44), X(cy - 40)), (X(cx - 28), X(cy - 48)),
-               (X(cx + 30), X(cy + 34)), (X(cx + 14), X(cy + 42))], fill=(210, 180, 120))
-    rect(cx - 52, cy - 52, 14, 26, (150, 110, 60))
-    d.ellipse([X(cx + 26), X(cy - 40), X(cx + 58), X(cy - 8)], fill=RED)
-    d.arc([X(cx + 26), X(cy - 40), X(cx + 58), X(cy - 8)], 200, 340,
-          fill=WHITE, width=3 * S)
+def cricket(cx, cy):
+    # Cricket bat leaning over a red ball.
+    pen.polygon([(px(cx - 44), px(cy - 40)), (px(cx - 28), px(cy - 48)),
+                 (px(cx + 30), px(cy + 34)), (px(cx + 14), px(cy + 42))], fill=(210, 180, 120))
+    box(cx - 52, cy - 52, 14, 26, (150, 110, 60))
+    pen.ellipse([px(cx + 26), px(cy - 40), px(cx + 58), px(cy - 8)], fill=CRIMSON)
+    pen.arc([px(cx + 26), px(cy - 40), px(cx + 58), px(cy - 8)], 200, 340,
+            fill=SNOW, width=3 * SS)
 
 
-# ---------------------------------------------------------------- frame
-rect(0, 0, 1024, 10, INK)
-spaced("THE WORLD IN ONE IMAGE", 512, 34, BOLD(29), INK, 10)
-date_font, _ = fit("MONDAY 23 NOVEMBER 2026", 950, SERIF, 64, 20)
-centered("MONDAY 23 NOVEMBER 2026", 512, 78, date_font, RED)
-rect(28, 158, 968, 5, INK)
+# ---------------------------------------------------------------- masthead
+box(0, 0, 1024, 10, INK)
+letterspace("THE WORLD IN ONE IMAGE", 512, 34, bold(29), INK, 10)
+dateline, _ = fitfont("MONDAY 23 NOVEMBER 2026", 950, serif, 64, 20)
+centre("MONDAY 23 NOVEMBER 2026", 512, 78, dateline, CRIMSON)
+box(28, 158, 968, 5, INK)
 
-# ---------------------------------------------------------------- hero
-rect(28, 178, 968, 254, NAVY)
-icon_globe_crack(150, 305, 82)
-d.text((X(252), X(206)), "CLIMATE — ANTALYA, TÜRKIYE", font=BOLD(21), fill=PALE)
-hl = BOLD(53)
-d.text((X(252), X(240)), "COP31 CLIMATE TALKS", font=hl, fill=WHITE)
-d.text((X(252), X(302)), "COLLAPSE", font=hl, fill=WHITE)
-sub_font = REG(24)
-for i, ln in enumerate(wrap("Summit ends with no deal — EU rejects a pact silent on fossil fuels",
-                            sub_font, 716)):
-    d.text((X(252), X(372 + i * 32)), ln, font=sub_font, fill=(232, 236, 240))
-
-# ---------------------------------------------------------------- row 2
-def panel2(x, bg, icon, head_lines, sub, head_size=40):
-    rect(x, 448, 476, 264, bg)
-    icon(x + 238)
-    y = 448 + 96
-    font, _ = fit(max(head_lines, key=len), 440, BOLD, head_size, 16)
-    for ln in head_lines:
-        centered(ln, x + 238, y, font, WHITE)
-        y += int(head_size * 1.18)
-    sf = REG(22)
-    for ln in wrap(sub, sf, 436):
-        centered(ln, x + 238, y + 4, sf, (238, 240, 244))
-        y += 29
+# ---------------------------------------------------------------- lead story
+box(28, 178, 968, 254, NAVY)
+globe(150, 305, 82)
+pen.text((px(252), px(206)), "CLIMATE — ANTALYA, TÜRKIYE", font=bold(21), fill=SAND)
+lead = bold(53)
+pen.text((px(252), px(240)), "COP31 CLIMATE TALKS", font=lead, fill=SNOW)
+pen.text((px(252), px(302)), "COLLAPSE", font=lead, fill=SNOW)
+deck = plain(24)
+for n, ln in enumerate(wraptext("Summit ends with no deal — EU rejects a pact silent on fossil fuels", deck, 716)):
+    pen.text((px(252), px(372 + n * 32)), ln, font=deck, fill=MIST)
 
 
-panel2(28, DARKRED, lambda cx: icon_dome(cx, 512),
-       ["DEMOCRATS HIT", "258 SEATS"],
-       "Largest House majority since 1992; Hubbard beats Foxx in recount")
-panel2(520, STEEL, lambda cx: icon_flame(cx, 500),
-       ["24 BODY BAGS", "IN JAVA FIRE"],
-       "29 still missing after candy-factory blaze; search resumes Monday")
-
-# ---------------------------------------------------------------- row 3
-def panel3(x, bg, icon, head_lines, sub):
-    rect(x, 728, 312, 226, bg)
-    icon(x + 156)
-    y = 728 + 74
-    font, _ = fit(max(head_lines, key=len), 284, BOLD, 28, 14)
-    for ln in head_lines:
-        centered(ln, x + 156, y, font, WHITE)
-        y += 34
-    sf = REG(19)
-    for ln in wrap(sub, sf, 280):
-        centered(ln, x + 156, y + 2, sf, (238, 240, 244))
-        y += 25
+# ---------------------------------------------------------------- stories
+def story(x, y, w, h, bg, icon, icy, heads, sub, hsize, ssize, headw, subw, top, step):
+    box(x, y, w, h, bg)
+    icon(x + w // 2, icy)
+    yy = y + top
+    hf, _ = fitfont(max(heads, key=len), headw, bold, hsize, 14)
+    for ln in heads:
+        centre(ln, x + w // 2, yy, hf, SNOW)
+        yy += int(hsize * 1.18)
+    sf = plain(ssize)
+    for ln in wraptext(sub, sf, subw):
+        centre(ln, x + w // 2, yy + 4, sf, CLOUD)
+        yy += step
 
 
-panel3(28, SLATE, lambda cx: icon_missile(cx, 750),
-       ["RUSSIA ROLLS OUT", "SARMAT ICBM"],
-       "Images suggest Russia loading its new nuclear missile at Uzhur")
-panel3(356, GREEN, lambda cx: icon_exam(cx, 764),
-       ["MINISTER QUITS OVER", "AI CHEATING"],
-       "Seoul education chief resigns after exam scandal")
-panel3(684, PLUM, lambda cx: icon_cricket(cx, 766),
-       ["INDIA'S RECORD", "720 IN WELLINGTON"],
-       "Highest Test total in New Zealand; Rahul 136, Pant 128")
+MID = [
+    (28, WINE, dome, 512, ["DEMOCRATS HIT", "258 SEATS"],
+     "Largest House majority since 1992; Hubbard beats Foxx in recount"),
+    (520, TEAL, flame, 500, ["24 BODY BAGS", "IN JAVA FIRE"],
+     "29 still missing after candy-factory blaze; search resumes Monday"),
+]
+for x, bg, icon, icy, heads, sub in MID:
+    story(x, 448, 476, 264, bg, icon, icy, heads, sub, 40, 22, 440, 436, 96, 29)
 
-# ---------------------------------------------------------------- footer
-rect(28, 970, 968, 4, INK)
-centered("23 NOVEMBER 2026  •  SIX STORIES  •  ONE DAY", 512, 984, BOLD(22), INK)
+LOW = [
+    (28, SLATE, missile, 750, ["RUSSIA ROLLS OUT", "SARMAT ICBM"],
+     "Images suggest Russia loading its new nuclear missile at Uzhur"),
+    (356, FOREST, exam, 764, ["MINISTER QUITS OVER", "AI CHEATING"],
+     "Seoul education chief resigns after exam scandal"),
+    (684, PLUM, cricket, 766, ["INDIA'S RECORD", "720 IN WELLINGTON"],
+     "Highest Test total in New Zealand; Rahul 136, Pant 128"),
+]
+for x, bg, icon, icy, heads, sub in LOW:
+    story(x, 728, 312, 226, bg, icon, icy, heads, sub, 28, 19, 284, 280, 74, 25)
 
-img = img.resize((1024, 1024), Image.LANCZOS)
-img.save("entry.png", optimize=True)
-print("wrote entry.png", img.size)
+
+# ================================ footer ===============================
+box(28, 970, 968, 4, INK)
+centre("23 NOVEMBER 2026  •  SIX STORIES  •  ONE DAY", 512, 984, bold(22), INK)
+
+page = page.resize((1024, 1024), Image.LANCZOS)
+page.save("entry.png", optimize=True)
+print("wrote entry.png", page.size)

@@ -27,19 +27,21 @@ news sources reporting on 23 November 2026 in some time zone.
   New Zealand; Rahul 136, Pant 128 (ESPNcricinfo, Cricbuzz,
   SuperSport).
 
-## How it works
+## How the entry is made
 
-`entry.png` is the finished front page, drawn by `build_image.py`
-(Pillow, flat vector-style panels, DejaVu type) at 2× and downsampled
-for crisp text. The graded program is `main.py` — Python standard
-library only, no network — which copies `entry.png` byte for byte to
-the output directory, so two runs write identical bytes.
+`build_image.py` draws the front page with Pillow: flat vector-style
+panels and DejaVu type, rendered at twice the final size and shrunk for
+crisp text. `main.py` is the program the competition grades — standard
+library only, no network — and it copies the committed `entry.png`
+byte for byte into the output directory, so a second run writes the
+same bytes as the first.
 
-## Run
+## Running it
 
 ```
 python3 main.py
 ```
 
-writes `/output/entry.png` (or `$MAKEFUN_OUTPUT_DIR/entry.png` when
-that variable is set).
+That writes `/output/entry.png`; set `MAKEFUN_OUTPUT_DIR` to choose a
+different output directory. No build step is needed — the image is
+already in the repository, and the program only copies it.
